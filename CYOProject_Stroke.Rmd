@@ -1,0 +1,1086 @@
+---
+title: "CYO_Project_Stroke Prediction"
+author: "Christina Papadopoulou"
+date: "2022-11-20"
+output: pdf_document
+---
+
+## Introduction
+
+A stroke is a medical condition that affects the arteries leading to the brain. Basically, the blood supply to part of the brain stops. This could happen because a blood vessel which deliver oxygen and nutrients to the brain, either is blocked by a clot or is ruptured and hence, preventing the blood flow to the brain. In both cases, part of the brain cells become damaged or die. As a result, a stroke can cause lasting brain damage, disabilities or even death. According to World Health Organization, stroke was the second leading cause of death globally in 2019. More information about that can be found in [The top 10 causes of death](https://www.who.int/news-room/fact-sheets/detail/the-top-10-causes-of-death). It has been proved that are certain conditions that increase the risk of having a stroke such as diabetes, hypertension, irregular heart beats and others.
+
+In this report a dataset regarding stroke from Kabble website was used. The [Stroke Prediction Dataset](https://www.kaggle.com/datasets/fedesoriano/stroke-prediction-dataset?datasetId=1120859&sortBy=dateRun&tab=bookmarked&select=healthcare-dataset-stroke-data.csv) was used to determine or better predict if a patient is likely to have a stroke based on a number of features. More precisely, the below 12 variables were taken into account where the stroke variable is our response variable with value 1 if the patient had a stroke and 0 if not.
+
+1) id: unique identifier of each observation
+2) gender: "Male", "Female" or "Other"
+3) age: age of the patient
+4) hypertension: 0 if the patient does not have hypertension, 1 if the patient has hypertension
+5) heart_disease: 0 if the patient does not have any heart diseases, 1 if the patient has a heart disease
+6) ever_married: "No" or "Yes"
+7) work_type: "children", "Govt_job" (government jobs), "Never_worked", "Private" or "Self-employed"
+8) Residence_type: "Rural" or "Urban"
+9) avg_glucose_level: average glucose level in blood
+10) bmi: Body mass index (weight in kg/(height in m)^2)
+11) smoking_status: "formerly smoked", "never smoked", "smokes" or "Unknown"*
+12) stroke: 1 if the patient had a stroke or 0 if not
+*Note: "Unknown" in smoking_status means that the information is unavailable for this patient
+
+
+The goal here is to build a machine learning algorithm which will be able to predict whether or not a patient will have a stroke. In the beginning the dataset was loaded, followed by data preprocessing to achieve a tidy form of our data. Visualization of different patterns was executed and finally we proceeded in finding the algorithm that could best predict a stroke.
+
+
+## Methods and analysis
+
+In this section, we are going to explain the techniques and methods used till we get to our final model.
+
+### Import data
+
+First of all, we are going to download our data:
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# Packages needed
+
+if(!require(tidyverse)) install.packages("tidyverse", repos = "http://cran.us.r-project.org")
+if(!require(caret)) install.packages("caret", repos = "http://cran.us.r-project.org")
+if(!require(data.table)) install.packages("data.table", repos = "http://cran.us.r-project.org")
+if(!require(GGally)) install.packages("GGally", repos = "http://cran.us.r-project.org")
+if(!require(nortest)) install.packages("nortest", repos = "http://cran.us.r-project.org")
+if(!require(mice)) install.packages("mice", repos = "http://cran.us.r-project.org")
+if(!require(reshape2)) install.packages("reshape2", repos = "http://cran.us.r-project.org")
+if(!require(rpart.plot)) install.packages("rpart.plot", repos = "http://cran.us.r-project.org")
+if(!require(randomForest)) install.packages("randomForest", repos = "http://cran.us.r-project.org")
+if(!require(performanceEstimation)) install.packages("performanceEstimation", repos = "http://cran.us.r-project.org")
+
+library(tidyverse)
+library(caret)
+library(data.table)
+library(GGally)
+library(nortest)
+library(mice)
+library(reshape2)
+library(rpart.plot)
+library(randomForest)
+library(performanceEstimation)
+```
+
+```{r load data}
+#Stroke Prediction Dataset
+#https://www.kaggle.com/datasets/fedesoriano/stroke-prediction-dataset?select=healthcare-dataset-stroke-data.csv
+#https://www.kaggle.com/datasets/fedesoriano/stroke-prediction-dataset/download?datasetVersionNumber=1
+
+
+stroke_temp<-  read.csv("healthcare-dataset-stroke-data.csv")
+
+```
+
+We then proceed in having a first look of their structure:
+
+```{r first look on structure}
+
+str(stroke_temp)
+```
+
+We have a data frame of 5110 observations (rows) and 12 variables (columns).
+
+The first thing that we notice from the structure of our data is that not all our variables are numerical. Actually, there are six of them that are character variables and six numerical. However, stroke  which is the variable that we want to predict, is in fact a categorical variable since it denotes the fact of getting (value 1) or not getting (value 0) a stroke. We will convert the stroke variable to a factor with two levels: positive level ("pos") for those getting a stroke and negative level ("neg") for those not getting a stroke.
+
+```{r stroke variable as factor}
+
+stroke_temp$stroke<-factor(stroke_temp$stroke, levels=c(0,1),labels=c("neg","pos"))
+```
+
+
+Let us now check if we have duplicated observations:
+
+```{r duplicated observations}
+
+sum(duplicated(stroke_temp))
+```
+There is no duplication, therefore we do not have to decide whether to remove them or not.
+
+### Features Selection
+
+Features selection is an important procedure that we should apply before building our algorithm. Basically, if we include insignificant variables in our model this can impact its performance. Therefore, the proper selection of the right features could mean great performance with short training/running times. 
+
+#### id variable
+
+As we mentioned before, the id variable is a unique identifier for each observation. Thus, it does not affect at all the prediction of getting or not a stroke.
+
+#### gender variable
+
+Gender variable is a categorical variable and we will create the table of frequencies for the gender variable.
+
+```{r frequencies - variable gender in stroke_temp, echo=FALSE}
+tab_gender<-table(stroke_temp$gender)
+tab_gender
+```
+
+We observe that there is only one observation defined as "Other". We do not know if this is a data entry error or a natural outlier. For the moment, we will leave it as it is and we will create the table of relative frequencies for the gender variable. 
+
+```{r relative frequencies - variable gender, echo=FALSE}
+prop_gender <-prop.table(tab_gender)
+round(prop_gender,3)
+
+```
+We see that we have more women responders than men in our dataset, but how is the stroke variable affected by this. We continue with the creation of a barplot to check the relation of stroke versus the gender variable. 
+
+
+```{r barplot stroke - gender, echo=FALSE,warning=FALSE}
+
+plot_gender_stroke<- ggplot(stroke_temp, aes(x = gender, fill = stroke)) +
+   geom_bar(position = "dodge") + stat_count(geom = "text", colour = "black", size = 4,
+aes(label = ..count..),position=position_dodge(width=0.9), vjust=-0.25)
+
+plot_gender_stroke
+
+```
+
+Since both our variables are categorical, we will run a chi_square test in order to check if the variables are independent or not, with null hypothesis $H_0$: the two variables are independent. 
+
+```{r chitest for gender - stroke, warning=FALSE, echo=FALSE}
+chitest_gender <- chisq.test(stroke_temp$gender, stroke_temp$stroke)
+chitest_gender
+```
+We get a p-Value more than the significance level of 0.05, hence, we cannot reject the null hypothesis and we conclude that the two variables are independent. However, because we have just one observation reported as "Other", this may affect our chi_square test results. For this reason we will also run a Fisher's exact test, with the same null hypothesis as above, $H_0$: the two variables are independent. 
+
+```{r  fisher test for gender - stroke, echo=FALSE}
+fishertest_gender <- fisher.test(stroke_temp$gender, stroke_temp$stroke)
+fishertest_gender
+```
+We again get a p-Value more than the significance level of 0.05, hence, we cannot reject the null hypothesis and we can conclude that the two variables are independent.
+
+
+#### Age variable
+
+Let us now explore the age variable by creating a histogram.
+
+```{r histogram age, echo=FALSE}
+plot_age<-stroke_temp %>%  ggplot(aes(age)) + 
+  geom_histogram(color="black",fill="navy",binwidth = 7) +
+  ggtitle("Histogram of age")
+
+plot_age
+```
+We observe that we have a left skewed histogram. That means that we have more older people in our dataset than younger. We also observe, that we have some really young people (children) in our dataset. Although less common, stroke can happen in children of all ages, even babies.
+
+
+We continue with creating a boxplot and checking for outliers.
+
+```{r boxplot age, echo=FALSE}
+plot_age_box<-stroke_temp %>%  ggplot(aes(x = 1, y = age)) +  geom_boxplot(fill="skyblue")
+plot_age_box
+```
+
+```{r age outliers}
+boxplot(stroke_temp$age, plot=FALSE)$out
+```
+
+We have a median age of 45 and no outliers.
+Following, we will create a boxplot and an histogram of stroke versus the age.
+
+```{r boxplot age - stroke, echo=FALSE}
+plot_age_stroke <- stroke_temp %>% ggplot(aes(stroke,age))+geom_boxplot(fill="skyblue")
+plot_age_stroke
+```
+
+```{r histogram age - stroke, echo=FALSE}
+plot_age_stroke_histo<-ggplot(stroke_temp, aes(x = age)) +  
+  geom_histogram(color="black",fill="navy",binwidth = 7) +
+  facet_wrap(~ stroke)
+
+plot_age_stroke_histo
+```
+
+From the boxplot, we can clearly understand that the majority of people that are having a stroke are older and from the histogram that both for a positive and a negative case, we have left skewed histograms.
+
+
+We have seen above that the age distribution is left skewed, hence it does not follow the normal distribution. We can also run a Kolmogorov-Smirnov test to prove this
+
+```{r normtest for age, echo=FALSE}
+normtest_age <- lillie.test(stroke_temp$age)
+normtest_age
+```
+We get a p-Value less than the significance level of 0.05, hence, we reject the null hypothesis and conclude that the the variable is not normally distributed.
+
+As a result from the above, we can use the non parametric Mann Whitney U - Wilcoxon test to check the null hypothesis that people who get a stroke and those that do not get a stroke have on average the same age, therefore the two populations are equal.
+
+```{r Mann Whitney U - Wilcoxon test age - stroke, echo=FALSE}
+wilcoxtest_stroke_age <- wilcox.test(x = stroke_temp[stroke_temp$stroke=="pos","age"],
+    y = stroke_temp[stroke_temp$stroke=="neg","age"],
+    alternative = "two.sided",
+    paired = FALSE,
+    conf.level = 0.95)
+wilcoxtest_stroke_age
+```
+We get a p-Value less than the significance level of 0.05, hence, we reject the null hypothesis and conclude that the the populations are not equal. Therefore, the age variable appear to be statistically significant.
+
+#### Hypertension variable
+
+As we mentioned in the introduction, the hypertension variable is denoted as an integer where we get 0 if the patient does not have hypertension and 1 if the patient has. Basically, it is a categorical variable for "No" as 0 and "Yes" as 1. Let us create a frequency and a relative table.
+
+```{r frequencies - variable hypertension in stroke_temp, echo=FALSE}
+tab_hypertension<-table(stroke_temp$hypertension)
+tab_hypertension
+```
+
+```{r relative frequencies - variable hypertension, echo=FALSE}
+prop_hypertension <-prop.table(tab_hypertension)
+round(prop_hypertension,3)
+
+```
+We observe that more responders do not have hypertension, but how is the stroke variable affected by this. We continue with the creation of a barplot to check the relation of stroke versus the hypertension variable. 
+
+
+```{r barplot stroke - hypertension, echo=FALSE}
+
+plot_hypertension_stroke<- ggplot(stroke_temp, aes(x = hypertension, fill = stroke)) +
+   geom_bar(position = "dodge") + stat_count(geom = "text", colour = "black", size = 4,
+aes(label = ..count..),position=position_dodge(width=0.9), vjust=-0.25)
+
+plot_hypertension_stroke
+
+```
+
+Since both our variables are categorical, we will run a chi_square test in order to check if the variables are independent or not, with null hypothesis $H_0$: the two variables are independent. 
+
+```{r chitest for hypertension - stroke, echo=FALSE}
+chitest_hypertension <- chisq.test(stroke_temp$hypertension, stroke_temp$stroke)
+chitest_hypertension
+```
+We get a p-Value less than the significance level of 0.05, hence, we reject the null hypothesis and conclude that the two variables are dependent. 
+
+
+#### Heart disease
+
+The heart_disease variable is denoted as an integer where we get 0 if the patient does not have a heart disease and 1 if the patient has. Basically, it is a categorical variable for "Not having heart disease" as 0 and "Having heart disease" as 1. Let us create a frequency and a relative table.
+
+```{r frequencies - variable heart_disease in stroke_temp, echo=FALSE}
+tab_heart_disease<-table(stroke_temp$heart_disease)
+tab_heart_disease
+```
+
+```{r relative frequencies - variable heart_disease, echo=FALSE}
+prop_heart_disease <-prop.table(tab_heart_disease)
+round(prop_heart_disease,3)
+
+```
+We observe that more responders do not have a heart disease, but how is the stroke variable affected by this. We continue with the creation of a barplot to check the relation of stroke versus the heart_disease variable. 
+
+
+```{r barplot stroke - heart_disease, echo=FALSE}
+
+plot_heart_disease_stroke<- ggplot(stroke_temp, aes(x = heart_disease, fill = stroke)) +
+   geom_bar(position = "dodge") + stat_count(geom = "text", colour = "black", size = 4,
+aes(label = ..count..),position=position_dodge(width=0.9), vjust=-0.25)
+
+plot_heart_disease_stroke
+
+```
+
+Since both our variables are categorical, we will run a chi_square test in order to check if the variables are independent or not, with null hypothesis $H_0$: the two variables are independent. 
+
+```{r chitest for heart_disease - stroke, echo=FALSE}
+chitest_heart_disease <- chisq.test(stroke_temp$heart_disease, stroke_temp$stroke)
+chitest_heart_disease
+```
+We get a p-Value less than the significance level of 0.05, hence, we reject the null hypothesis and conclude that the two variables are dependent. 
+
+#### Ever-married variable
+
+Here we have a categorical variable with "Yes" denoting that they ar married and "No" that they are not. Let us create a frequency and a relative table.
+
+```{r frequencies - variable ever_married in stroke_temp, echo=FALSE}
+tab_ever_married<-table(stroke_temp$ever_married)
+tab_ever_married
+```
+
+```{r relative frequencies - variable ever_married, echo=FALSE}
+prop_ever_married <-prop.table(tab_ever_married)
+round(prop_ever_married,3)
+
+```
+We observe that more responders are married, but how is the stroke variable affected by this. We continue with the creation of a barplot to check the relation of stroke versus the ever_married variable. 
+
+
+```{r barplot stroke - ever_married, echo=FALSE}
+
+plot_ever_married_stroke<- ggplot(stroke_temp, aes(x = ever_married, fill = stroke)) +
+   geom_bar(position = "dodge") + stat_count(geom = "text", colour = "black", size = 4,
+aes(label = ..count..),position=position_dodge(width=0.9), vjust=-0.25)
+
+plot_ever_married_stroke
+
+```
+
+Since both our variables are categorical, we will run a chi_square test in order to check if the variables are independent or not, with null hypothesis $H_0$: the two variables are independent. 
+
+```{r chitest for ever_married - stroke, echo=FALSE}
+chitest_ever_married <- chisq.test(stroke_temp$ever_married, stroke_temp$stroke)
+chitest_ever_married
+```
+We get a p-Value less than the significance level of 0.05, hence, we reject the null hypothesis and conclude that the two variables are dependent. 
+
+#### Work-type variable
+
+Work-type is a categorical variable. Let us create a frequency and a relative table of the work_type variable and check its categories.
+
+```{r frequencies - variable work_type in stroke_temp, echo=FALSE}
+tab_work_type<-table(stroke_temp$work_type)
+tab_work_type
+```
+
+```{r relative frequencies - variable work_type, echo=FALSE}
+prop_work_type <-prop.table(tab_work_type)
+round(prop_work_type,3)
+
+```
+We observe that in our dataset we have responders in five categories:
+"children" for the children,
+"Govt_job" for those working in government jobs,
+"Never_worked" for those that they have never worked,
+"Private" for those working in private companies and
+finally, the "Self-employed" category.
+However, how is the stroke variable affected by the work_type variable? We continue with the creation of a barplot to check the relation of stroke versus the work_type variable. 
+
+
+```{r barplot stroke - work_type, echo=FALSE}
+
+plot_work_type_stroke<- ggplot(stroke_temp, aes(x = work_type, fill = stroke)) +
+   geom_bar(position = "dodge") + stat_count(geom = "text", colour = "black", size = 4,
+aes(label = ..count..),position=position_dodge(width=0.9), vjust=-0.25)
+
+plot_work_type_stroke
+
+```
+
+Since both our variables are categorical, we will run a chi_square test in order to check if the variables are independent or not, with null hypothesis $H_0$: the two variables are independent. 
+
+```{r chitest for work_type - stroke, warning=FALSE, echo=FALSE}
+chitest_work_type <- chisq.test(stroke_temp$work_type, stroke_temp$stroke)
+chitest_work_type
+```
+We get a p-Value less than the significance level of 0.05, hence, we reject the null hypothesis and conclude that the two variables are dependent. However, because in some cases, like "children that had a stroke", we have very few observations, this may affect our chi_square test results. For this reason we will also run a Fisher's exact test, with the same null hypothesis as above, $H_0$: the two variables are independent. 
+
+```{r  fisher test for work_type - stroke, echo=FALSE}
+fishertest_work_type <- fisher.test(stroke_temp$work_type, stroke_temp$stroke,simulate.p.value=TRUE)
+fishertest_work_type
+```
+We again get a p-Value more than the significance level of 0.05, hence, we cannot reject the null hypothesis and we can conclude that the two variables are independent.
+
+#### Residence type variable
+
+We are dealing again with a categorical variable with categories: "Rural" to denote those living in rural areas and "Urban" to denote those living in urban areas. Let us create a frequency and a relative table.
+
+```{r frequencies - variable Residence_type in stroke_temp, echo=FALSE}
+tab_Residence_type<-table(stroke_temp$Residence_type)
+tab_Residence_type
+```
+
+```{r relative frequencies - variable Residence_type, echo=FALSE}
+prop_Residence_type <-prop.table(tab_Residence_type)
+round(prop_Residence_type,3)
+
+```
+We observe that those that live in rural area are almost the same with those that are not. However, how is the stroke variable affected by this? We continue with the creation of a barplot to check the relation of stroke versus the Residence_type variable. 
+
+
+```{r barplot stroke - Residence_type, echo=FALSE}
+
+plot_Residence_type_stroke<- ggplot(stroke_temp, aes(x = Residence_type, fill = stroke)) +
+   geom_bar(position = "dodge") + stat_count(geom = "text", colour = "black", size = 4,
+aes(label = ..count..),position=position_dodge(width=0.9), vjust=-0.25)
+
+plot_Residence_type_stroke
+
+```
+
+Since both our variables are categorical, we will run a chi_square test in order to check if the variables are independent or not, with null hypothesis $H_0$: the two variables are independent. 
+
+```{r chitest for Residence_type - stroke, echo=FALSE}
+chitest_Residence_type <- chisq.test(stroke_temp$Residence_type, stroke_temp$stroke)
+chitest_Residence_type
+```
+We get a p-Value more than the significance level of 0.05, hence, we cannot reject the null hypothesis and conclude that the two variables are independent. 
+
+#### Average glucose level variable
+
+With the variable average glucose level, basically we measure the blood sugar. Blood glucose is one of the basic forms of energy used by the cells and make up the muscles and tissues of our body to function properly. Glucose comes from a large part from what we eat, from our diet. The usual procedure is that, after a meal, the blood sugar levels rise and our body responds to this increase in sugar by secreting insulin which get the levels of sugar back to normal by ensuring that glucose is absorbed by the cells and tissues of our body. However, sometimes our body does not make enough insulin or does not use insulin well and when this happens, glucose stay in our blood and does not reach the cells.
+
+Let us now explore the avg_glucose_level variable by creating a histogram.
+
+```{r histogram avg_glucose_level, echo=FALSE}
+plot_avg_glucose_level<-stroke_temp %>%  ggplot(aes(avg_glucose_level)) + 
+  geom_histogram(color="black",fill="navy",binwidth = 7) +
+  ggtitle("Histogram of average glucose level")
+
+plot_avg_glucose_level
+```
+We observe that we have a right skewed histogram. That means that we have more people with normal glucose level in our dataset than people that they do not.
+
+We continue with creating a boxplot and checking for outliers.
+
+```{r boxplot avg_glucose_level, echo=FALSE}
+plot_avg_glucose_level_box<-stroke_temp %>%  ggplot(aes(x = 1, y = avg_glucose_level)) +  geom_boxplot(fill="skyblue")
+plot_avg_glucose_level_box
+```
+
+```{r avg_glucose_level outliers}
+boxplot(stroke_temp$avg_glucose_level, plot=FALSE)$out%>%head(15)
+max(stroke_temp$avg_glucose_level)
+```
+
+We have a median glucose level of around 92 mg/dL and many natural outliers. These high levels of blood glucose could happen to people that they have just eaten and they have measured their blood glucose. Moreover, people that have prediabetes or diabetes could have high levels of blood sugar.
+
+Following, we will create a boxplot and an histogram of stroke versus the avg_glucose_level.
+```{r boxplot avg_glucose_level - stroke, echo=FALSE}
+plot_avg_glucose_level_stroke <- stroke_temp %>% ggplot(aes(stroke,avg_glucose_level))+
+  geom_boxplot(fill="skyblue")
+plot_avg_glucose_level_stroke
+```
+
+```{r histogram avg_glucose_level - stroke, echo=FALSE}
+plot_avg_glucose_level_stroke_histo<-ggplot(stroke_temp, aes(x = avg_glucose_level)) +  
+  geom_histogram(color="black",fill="navy",binwidth = 7) +
+  facet_wrap(~ stroke)
+
+plot_avg_glucose_level_stroke_histo
+```
+
+From the boxplot, we can clearly understand that the majority of people that are having a stroke do have higher glucose levels and from the histogram that both for a positive and a negative case, we have right skewed histograms.
+
+
+We have seen above that the avg_glucose_level distribution is right skewed, hence it does not follow the normal distribution. We can also run a Kolmogorov-Smirnov test to prove this
+
+```{r normtest for avg_glucose_level, echo=FALSE}
+normtest_avg_glucose_level <- lillie.test(stroke_temp$avg_glucose_level)
+normtest_avg_glucose_level
+```
+We get a p-Value less than the significance level of 0.05, hence, we reject the null hypothesis and conclude that the the variable is not normally distributed.
+
+As a result from the above, we can use the non parametric Mann Whitney U - Wilcoxon test to check the null hypothesis that people who get a stroke and those that do not get a stroke have on average the same glucose levels, therefore the two populations are equal.
+
+```{r Mann Whitney U - Wilcoxon test avg_glucose_level - stroke, echo=FALSE}
+wilcoxtest_stroke_avg_glucose_level <- wilcox.test(x = stroke_temp[stroke_temp$stroke=="pos",
+                                                                   "avg_glucose_level"],
+    y = stroke_temp[stroke_temp$stroke=="neg","avg_glucose_level"],
+    alternative = "two.sided",
+    paired = FALSE,
+    conf.level = 0.95)
+wilcoxtest_stroke_avg_glucose_level
+```
+We get a p-Value less than the significance level of 0.05, hence, we reject the null hypothesis and conclude that the the populations are not equal. Therefore, the avg_glucose_level variable appear to be statistically significant.
+
+#### BMI variable
+
+The BMI stands for the Body mass index which is measured in (weight in kg/(height in m)^2). Therefore, this variable should be a numerical variable and not a categorical. We will convert it to numeric.
+
+```{r convert bmi to numerical}
+stroke_temp$bmi<-as.numeric(stroke_temp$bmi)
+```
+
+From the above, we get the message that "NAs introduced by coercion", hence we have missing values.
+
+Let us now explore the bmi variable by creating a histogram.
+
+```{r histogram bmi, echo=FALSE,,warning=FALSE}
+plot_bmi<-stroke_temp %>%  ggplot(aes(bmi)) + 
+  geom_histogram(color="black",fill="navy",binwidth = 5) +
+  ggtitle("Histogram of bmi")
+
+plot_bmi
+```
+We observe that we have a right skewed histogram. We know that the normal weight is between 18.5 – 24.9 kg/m^2, between 25 and 29.9 kg/m^2 are overweight and the Obese range is higher that 30.0 kg/m^2. The obese category is further divided to obese(Class I)(BMI 30 to 34.9), Obese (Class II) (BMI 35 to 39.9 ) and Morbidly Obese (Class III) (BMI 40 or more). That means that we have more people with normal and overweight body mass index in our dataset than people that are obese. We do not have to forget that we also have children in our dataset, hence their bosy mass index appear as underweight.
+
+We continue with creating a boxplot and checking for outliers.
+
+```{r boxplot bmi, echo=FALSE,,warning=FALSE}
+plot_bmi_box<-stroke_temp %>%  ggplot(aes(x = 1, y = bmi)) +  geom_boxplot(fill="skyblue")
+plot_bmi_box
+```
+
+```{r bmi outliers}
+boxplot(stroke_temp$bmi, plot=FALSE)$out%>%sort(decreasing=TRUE)
+
+```
+
+We have a median bmi of around 28 and many outliers. These outliers may be natural, some people may fall into the morbidly obesity class; there are records of people with BMI more than 100. However, they also may be data entry errors. 
+
+Following, we will create a boxplot and an histogram of stroke versus the bmi variable.
+```{r boxplot bmi - stroke, echo=FALSE, warning=FALSE}
+plot_bmi_stroke <- stroke_temp %>% ggplot(aes(stroke,bmi))+geom_boxplot(fill="skyblue")
+plot_bmi_stroke
+```
+
+```{r histogram bmi - stroke, echo=FALSE, warning=FALSE}
+plot_bmi_stroke_histo<-ggplot(stroke_temp, aes(x = bmi)) +  
+  geom_histogram(color="black",fill="navy",binwidth = 7) +
+  facet_wrap(~ stroke)
+
+plot_bmi_stroke_histo
+```
+
+From the boxplot, we can observe that people that are having a stroke and those that do not, have almost the same median and around the same interquartile range. Moreover, from the histogram we see that for both a positive and a negative case, we have right skewed histograms.
+
+
+We have seen above that the bmi distribution is right skewed, hence it does not follow the normal distribution. We can also run a Kolmogorov-Smirnov test to prove this
+
+```{r normtest for bmi, echo=FALSE}
+normtest_bmi <- lillie.test(stroke_temp$bmi)
+normtest_bmi
+```
+We get a p-Value less than the significance level of 0.05, hence, we reject the null hypothesis and conclude that the the variable is not normally distributed.
+
+As a result from the above, we can use the non parametric Mann Whitney U - Wilcoxon test to check the null hypothesis that people who get a stroke and those that do not get a stroke have on average the same body mass index, therefore the two populations are equal.
+
+```{r Mann Whitney U - Wilcoxon test bmi - stroke, echo=FALSE}
+wilcoxtest_stroke_bmi <- wilcox.test(x = stroke_temp[stroke_temp$stroke=="pos","bmi"],
+    y = stroke_temp[stroke_temp$stroke=="neg","bmi"],
+    alternative = "two.sided",
+    paired = FALSE,
+    conf.level = 0.95)
+wilcoxtest_stroke_bmi
+```
+We get a p-Value less than the significance level of 0.05, hence, we reject the null hypothesis and conclude that the the populations are not equal. Therefore, the bmi variable appear to be statistically significant.
+
+#### Smoking status variable
+
+Finally, let us check the smoking status variable. smoking_status is a categorical variable. Let us create a frequency and a relative table of the work_type variable and check its categories.
+
+```{r frequencies - variable smoking_status in stroke_temp, echo=FALSE}
+tab_smoking_status<-table(stroke_temp$smoking_status)
+tab_smoking_status
+```
+
+```{r relative frequencies - variable smoking_status, echo=FALSE}
+prop_smoking_status <-prop.table(tab_smoking_status)
+round(prop_smoking_status,3)
+
+```
+We observe that in our dataset we have responders in four categories: "formerly smoked", "never smoked", "smokes", "unknown". "Unknown" is basically not available information. However, how is the stroke variable affected by the smoking_status variable? We continue with the creation of a barplot to check the relation of stroke versus the smoking_status variable. 
+
+
+```{r barplot stroke - smoking_status, echo=FALSE}
+
+plot_smoking_status_stroke<- ggplot(stroke_temp, aes(x = smoking_status, fill = stroke)) +
+   geom_bar(position = "dodge") + stat_count(geom = "text", colour = "black", size = 4,
+aes(label = ..count..),position=position_dodge(width=0.9), vjust=-0.25)
+
+plot_smoking_status_stroke
+
+```
+
+Since both our variables are categorical, we will run a chi_square test in order to check if the variables are independent or not, with null hypothesis $H_0$: the two variables are independent. 
+
+```{r chitest for smoking_status - stroke, warning=FALSE, echo=FALSE}
+chitest_smoking_status <- chisq.test(stroke_temp$smoking_status, stroke_temp$stroke)
+chitest_smoking_status
+```
+We get a p-Value less than the significance level of 0.05, hence, we reject the null hypothesis and conclude that the two variables are dependent. 
+
+
+#### Multicolinearity analysis
+
+In order to build a model in which the predictors will explain the response variable in the best and most reliable way, it is very important to check that these predictors are not correlated with each other. While correlation between a feature and the response variable is an indication that our model will have better predictability, correlation among the predictors/features is a problem. This has to be corrected, if we want to end up with a reliable model. We will use the ggpairs function of the GGally package in order to check the correlations between the features 
+
+```{r correlation ggpairs,fig.height = 12,fig.width = 12,echo=FALSE,results='hide',message=FALSE, warning=FALSE}
+ggpairs(stroke_temp[,c(3:5,9,10,12)], aes(color = stroke, alpha=0.5))
+```
+
+We can see the scatterplots of each pair of the numeric variables (on the left part of the figure) and the Pearson correlation is displayed on the right. All the scatterplots associated with the variables hypertension and heart_disease are like two columns because as we mentioned above, they are basically categorical variables. Also, on the diagonal the variable distribution, the density plot, is available. From there, we get that all our variables do not follow the normal distribution. Furthermore, since we also have a response variable, at the bottom right diagonal, we get the barplots for the two classes of the stroke. At the last line, we get the histograms of each class of the stroke versus the features. Finally, at the last column we get the boxplots of the stroke variable versus the  features. 
+
+From the plot, we observe that there is not correlation or there is a very low positive correlation for all the variables.
+
+
+#### Final selected features
+
+From the feature selection procedure that we have seen above, we conclude that we will remove from our dataset the variables id, gender, Residence_type. Therefore, we get the below dataset.
+
+```{r dataset after feature selection}
+stroke_final <- stroke_temp[,c(3:7, 9:12)]
+```
+
+Furthermore, we have also the issue that most machine learning algorithms only work with numeric values. Since these categorical features cannot be directly used in most machine learning algorithms, the categorical features need to be transformed into numerical features. Therefore, we will proceed with the following:
+
+```{r ever_married as integer}
+stroke_final$ever_married<-as.integer(factor(stroke_final$ever_married, 
+                                            levels=c("No","Yes")))
+```
+
+```{r work_type as integer}
+stroke_final$work_type<-as.integer(factor(stroke_final$work_type, 
+                                         levels=c("children","Govt_job",
+                                                  "Never_worked","Private",
+                                                  "Self-employed")))
+```
+
+```{r smoking status as integer}
+stroke_final$smoking_status<-as.integer(factor(stroke_final$smoking_status, 
+                                              levels=c("formerly smoked", "never smoked",
+                                                       "smokes","Unknown")))
+```
+
+However, we have seen that the class "Unknown" is basically not available information. Therefore, we can put the class value 4 for as NAs.
+
+```{r smoking status class 4 as NAs}
+stroke_final$smoking_status[stroke_final$smoking_status==4] <-NA
+```
+
+Let us now have a look of the structure of our final dataset.
+
+```{r stroke_final structure}
+str(stroke_final)
+```
+
+Now that we have converted all our variables to numerical we can check again the correlations between the features.
+
+```{r correlation ggpairs stroke final,fig.height = 12,fig.width = 12,echo=FALSE,results='hide',message=FALSE, warning=FALSE}
+ggpairs(stroke_final, aes(color = stroke, alpha=0.5))
+```
+
+From the plot, we observe again that there is a very low positive or negative correlation (in some cases not even a correlation) between almost all the variables. Exception are the wotk_type - age that have low positive correlation and the ever_married - age that have a positive correlation. In general, we accept that an absolute correlation of over >0.7 among two or more features indicates the presence of multicollinearity. 
+
+
+### Normalisation of the predictors
+
+We have seen that our data has varying scales. If we do not normalize the data, the variables that use a larger scale will dominate over the machine learning algorithm, causing to negatively affect the model performance. Moreover, some algorithms used to build models (such as k-nearest neighbors) do not make assumptions regarding the distribution of the data.Therefore, we will normalize our data.
+
+
+```{r normalisation of predictors}
+stroke_final[,c(1:8)] <- as.data.frame(scale(stroke_final[,c(1:8)]))
+```
+
+
+### Data splitting
+
+Now it is the time of splitting our data.
+
+#### Train_temp and validation set partition
+
+Our dataset is small, we only have 5110 observations. Therefore, the splitting of the dataset should be done in a way that we will have enough observations for the train set, for the validation set and for the test set. If we do not have enough training data, then the machine learning model will have high variance while training. If we do not have enough testing data/validation data, our model evaluation/model performance statistic will have greater variance. Here, we firstly split our data in a ratio 80:20 for the temporary training set and the validation set. The validation set will only be used to test our final model after completing the training. Later on, we will also split the temporary training set, to a test set and a training set.
+
+```{r data partition, temporary-validation, warning=FALSE}
+set.seed(1, sample.kind="Rounding")
+test_index <- createDataPartition(y = stroke_final$stroke, times = 1, p = 0.2, list = FALSE)
+train_temp <- stroke_final[-test_index,]
+validation_set <- stroke_final[test_index,]
+```
+
+#### Train set and test set partition
+
+Let us continue with splitting our train_temp data to a train set and a test set. For the reasons mentioned previously, we will split our data to a 80:20 ratio for the train set and the test set respectively. We will use these two sets during the building of our machine learning algorithm.
+
+```{r data partition, train-test, warning=FALSE}
+set.seed(123, sample.kind="Rounding")
+test_index1 <- createDataPartition(y = train_temp$stroke, times = 1, p = 0.2, list = FALSE)
+train_set <- train_temp[-test_index1,]
+test_set <- train_temp[test_index1,]
+```
+
+### Data exploration
+
+We will now use the train_set dataset in order to explore our data and gain some useful insights. Let us check the structure of our data and the summary of our data.
+
+```{r structure of train_set}
+
+str(train_set)
+```
+
+```{r summary of train_set}
+
+summary(train_set)
+```
+
+We get some statistics for our variables including the mean, the median and the minimum value after their normalization. We also observe that the bmi variable has 145 missing values and the smoking_status 990.
+
+
+We will now create the boxplots of our variables and check for the outliers.
+
+```{r boxplots train_set, echo=FALSE,results='hide',message=FALSE, warning=FALSE}
+
+df.m <- melt(train_set, id.var = "stroke")
+head(df.m)
+
+p1<-ggplot(data = df.m, aes(x=variable, y=value)) + 
+  geom_boxplot(aes())
+p1 + facet_wrap( ~ variable, scales="free")
+```
+We observe outliers for four features, hypertension, heart disease, average glucose level and the body mass index. The hypertension and the heart_disease features are basically categorical variables. We have seen before normalization, that they were taking the value 1 in case you have hypertension and a heart disease respectively. As shown in the plots during feature selection procedure, the values of 1 for both features were not so many. Therefore, at the boxplots appear as outliers when in reality are not. Regarding the average glucose level, we have also shown in the feature selection part, that these high values of blood sugar can be observed to people with prediabetes or diabetes. Finally, regarding the bmi feature, we have seen that the outliers may be natural/true or measurement errors or input errors. Since we do not have access to the procedures that the data were collected, we will consider them as natural outliers.
+
+
+#### Missing values
+
+We have seen that we have 145 missing values at the variable bmi. To the same feature we had also many outliers. The issue with the body mass index is that if someone is obese, it is less likely to disclose its weight. This could lead us that we have missing values not at random. However, since we do not have access at the procedures that the data were collected, we will assume that they are missing at random and we will handle these values as such. The same logic as with the bmi feature, we will also assume for the smoking status variable that we have 990 missing values and we are going to impute these values.
+
+One solution would be to delete the observations with the missing values but this would further decrease our dataset. One other solution would be replace them with the median or the mean value or even better with the median or mean value of each class. However, we prefer to use the mice package to impute the missing values. This package creates multiple imputations (replacement values) for the missing data. Let us display the missing values pattern
+
+```{r missing values pattern,fig.width=7,fig.height=5,echo=FALSE,results='hide',message=FALSE}
+md.pattern(train_set,rotate.names=T)
+```
+
+Let us now proceed with imputing our data.
+
+```{r missing values imputation,echo=FALSE,results='hide',message=FALSE}
+
+ini <- mice(train_set, maxit = 0,seed=123)
+meth <- ini$meth
+meth["smoking_status"] <- "rf"
+imp1 <- mice(train_set, maxit = 50, meth = meth, seed = 123)
+```
+ 
+This imputation computes as default 5 multiple imputations, 5 imputed data sets. We will have to check how good was the fitting of the missing values of these five imputations to our data. For this reason, we get the below plots
+
+```{r missing values imputation density plots}
+densityplot(imp1)
+```
+
+```{r missing values imputation stripplots}
+stripplot(imp1, pch=20, cex=2)
+```
+
+The blue dots and lines in the above plots are the observed data and the red ones are the imputed data. Ideally,the red points and lines should be similar with the blue ones.  This would mean that the imputed values are similar to the observed, in other words they are plausible values.The features that have only blue dots is because they do not have missing values, hence they were not imputed.
+
+It seems that we get good fit for all 5 imputations. Therefore, we will select one to complete our data set.
+
+```{r complete dataset}
+train_set1<- complete(imp1,2)
+```
+
+
+#### Response variable stroke
+
+Subsequently, we will create a barplot for the response variable stroke.
+
+
+```{r barplot stroke, echo=FALSE}
+
+plot_stroke<- stroke_temp%>%ggplot(aes(stroke))+geom_bar(fill="navy") + 
+  stat_count(geom = "text", colour = "black", size = 4,
+aes(label = ..count..),position=position_dodge(width=0.9), vjust=-0.25)
+
+plot_stroke
+
+```
+We will also create the table of relative frequencies for the stroke variable. 
+
+```{r relative frequencies - variable stroke, echo=FALSE}
+prop_stroke <-prop.table(table(train_set1$stroke))
+round(prop_stroke,3)
+
+```
+
+It is clear that the classes are highly imbalanced. This means that the number of observation for each class in the train set is not balanced. The issue is that most machine learning algorithms do not work very well with imbalanced datasets because they do not get the necessary information about the minority class. Therefore, it is difficult for the algorithms to make an accurate prediction. Hence, we should find a way to tackle this issue.
+
+One first approach would be to not take into consideration the accuracy for the performance of our model but to look on the sensitivity, specificity and the F1 score. In this particular case, the specificity is more important, we would like to maximize the specificity over sensitivity. This happens because false positives can lead to healthy people begin a treatment. We therefore, want to be sure that negative tests are true negatives, we want to maximize the true negative error. Furthermore, we could make use of the F1-score which is the harmonic average of precision and recall and try to maximize this value.
+
+However, the most efficient way to handle an imbalanced dataset is to balance it. This leads to an improved overall classification performance compared to that of an imbalanced dataset. A method that we could use in order to balance our dataset is the SMOTE (Synthetic Minority Oversampling Technique). As implied by the name, this technique will be oversampling the minority class and hence, will produce a dataset that has more balanced classes. For doing this, we will use the [performanceEstimation pacakge](https://cran.r-project.org/web/packages/performanceEstimation/performanceEstimation.pdf).
+
+
+```{r balance data with smote}
+
+smote_data <- smote(stroke~., train_set1, 
+                        k = 5, # indicates the number of nearest neighbours used to generate
+                               # the new examples of the minority class.
+                        perc.over = 19, # A number of how many extra cases from the minority
+                                        # class are generated (known as over-sampling).
+                        perc.under = 1.1) # A number of how many extra cases from the majority
+                                          # classes are selected for each case generated from                                                                  #the minority class (known as under-sampling) 
+
+table(smote_data$stroke)
+
+prop_stroke_smote <-prop.table(table(smote_data$stroke))
+round(prop_stroke_smote,3)
+```
+
+As we observe, our classes are now balanced.
+
+
+### Modelling approach
+
+In this part we will try different machine learning algorithms and we will test which have the best performance. Since we have a classification problem and our data is balanced, the measure that we will use to test the performance of our models is the Accuracy which results fro the confusion matrix. More details on this in [Introduction to Data Science, Rafael A. Irizarry, Machine Learning part, Introduction to Machine Learning, Evaluation Metrics](http://rafalab.dfci.harvard.edu/dsbook/introduction-to-machine-learning.html#the-confusion-matrix).
+
+#### Logistic regression approach
+
+One way to build an algorithm would be with the use of the logistic regression approach. We could do this since our response variable is categorical with binary outcome. More details regarding logistic regression approach can be found in
+[Introduction to Data Science, Rafael A. Irizarry, Machine Learning part, Examples of algorithms, Logistic Regression](http://rafalab.dfci.harvard.edu/dsbook/examples-of-algorithms.html#logistic-regression).
+
+Let us now fit the logistic regression model with the function of generalized linear model (glm).
+
+```{r logistic regression - fit the model}
+model_glm_stroke <- glm(stroke ~ ., family ="binomial", data = smote_data)
+```
+
+We will now obtain the prediction using the predict function.
+
+```{r logistic regression - predict}
+predict_model_glm_stroke <- predict(model_glm_stroke, newdata = test_set, type = "response")
+```
+
+Now we will use the function ifelse to denote all the probabilities above 0.5 as positives and the remaining as negatives.
+
+```{r logistic regression - ifelse}
+y_model_glm_stroke <- ifelse(predict_model_glm_stroke >= 0.5, "pos", "neg")
+```
+
+Finally, let us contsruct te confusion matrix and chech tha accuracy.
+
+```{r logistic regression - confusion matrix}
+tab_model_glm_stroke <- table(test_set$stroke, y_model_glm_stroke)
+
+confusionMatrix_model_glm_stroke <- confusionMatrix(tab_model_glm_stroke,positive ="pos")
+
+confusionMatrix_model_glm_stroke
+
+```
+
+Therefore, the accuracy with the logistic regression model is:
+
+```{r logistic regression - Accuracy, echo=FALSE}
+glm <-confusionMatrix_model_glm_stroke$overall[["Accuracy"]]
+glm
+```
+
+
+#### Desicion Trees
+
+Another useful machine learning approach that we could use to build our model is the classification or decision tree since our response variable is categorical with a binary outcome. Basically, a classification tree is build through a process that is called recursive partitioning. That means that a repetitive process of splitting the data into partitions using some criteria is running and then, it continues to further splitting them up on each of the branches. 
+
+Let us now build our classification tree.
+```{r classification tree, warning=FALSE}
+set.seed(123, sample.kind="Rounding")
+model_tree <- rpart(stroke ~ ., data = smote_data, method = "class",
+                    control = rpart.control(xval=20, cp=0.009))
+
+```
+
+We will now plot our model
+
+```{r classification tree plot, echo=FALSE}
+rpart.plot(model_tree, cex=0.85)
+```
+
+We do not have to forget that we have normalized our data that is why the number in the nodes (the criteria used to split the data) have this form. The advantage of using decision trees is that we would not have to normalize our data in order to use this machine learning algorithm.
+
+
+We will continue with obtaining the prediction using the predict function.
+
+```{r classification tree - predict}
+predict_model_tree <- predict(model_tree, newdata = test_set, type = "class")
+```
+
+
+We will now check the metrics of our model.
+
+```{r classification tree - confusion matrix}
+
+confusionMatrix_model_tree <- confusionMatrix(predict_model_tree,test_set$stroke, positive ="pos",mode="everything")
+confusionMatrix_model_tree
+
+```
+
+
+Therefore, the accuracy of our model using the decision tree algorithm is:
+
+```{r classification tree - Accuracy, echo=FALSE}
+classification_tree <- confusionMatrix_model_tree$overall[["Accuracy"]]
+classification_tree
+```
+
+For the moment, we gwt a slightly better perfomance with this algorithm.
+
+#### Random Forest
+
+The final machine learning algorithm that we will use is the random Forest. The idea of this algorithm is to average multiple classification trees and therefore, improve the performance of our prediction and reduce the instability.
+
+Here, first of all, we will try to find the best value for the parameter mtry which indicates the number of variables that will be randomly sampled as candidates at each split.
+
+
+```{r random Forest - mtry, warning=FALSE, echo=FALSE}
+
+set.seed(12, sample.kind="Rounding")
+
+control <- trainControl(method="cv", number = 10)
+
+grid <- data.frame(mtry = c(1:8))
+
+model_rf <- train(stroke~.,smote_data,method = "rf",
+                  trControl=control, tuneGrid = grid)
+
+model_rf$bestTune
+```
+
+Therefore, we get the best mtry parameter. We can now fit the random forest model with the best mtry parameter.
+
+```{r random Forest - fit model, warning=FALSE}
+fit_rf <- randomForest(stroke~., smote_data, minNode = model_rf$bestTune$mtry)
+```
+
+We will continue with obtaining the prediction using the predict function.
+
+```{r random forest - predict}
+predict_rf<- predict(fit_rf, test_set)
+```
+
+
+We will now check the confusion matrix of our model.
+
+```{r random forest - confusion matrix}
+
+confusionMatrix_rf <- confusionMatrix(predict_rf,test_set$stroke, positive ="pos",
+                                      mode="everything")
+confusionMatrix_rf
+
+```
+
+
+Therefore, the accuracy of our model using the decision tree algorithm is:
+
+```{r random forest - Accuracy, echo=FALSE}
+rf<-confusionMatrix_rf$overall[["Accuracy"]]
+rf
+```
+We observe that this method gave us the greatest accuracy.
+
+## Results
+
+In this section, the modeling results are going to be presented. We will create a results table
+
+```{r results table}
+accuracy_results <- tibble(method = c("Logistic Regression Model",
+                                      "Classification Trees", "Random Forest"),
+                       Accuracy = c(glm, classification_tree, rf))
+
+knitr::kable(accuracy_results,digits=5)                              
+```
+
+As we notice, the best Accuracy value was achieved with the random forest algorithm, which maximized the most the accuracy. Therefore, we will choose this method and we will check our model performance taking into consideration the train_temp set and our final hold-out test set that means the validation set. Therefore, let us run the above procedure but now for the train_temp and the validation set.
+
+First of all we will impute the missing data to the train_temp set.
+
+
+```{r missing values train_ temp imputation,echo=FALSE,results='hide',message=FALSE}
+
+ini2 <- mice(train_temp, maxit = 0,seed=123)
+meth <- ini2$meth
+meth["smoking_status"] <- "rf"
+imp2 <- mice(train_temp, maxit = 50, meth = meth, seed = 123)
+```
+
+We will create the desnity plots and the stripplots.
+
+```{r missing values train_temp imputation density plots}
+densityplot(imp2)
+```
+
+
+```{r missing values train_temp imputation stripplots}
+stripplot(imp2, pch=20, cex=2)
+
+```
+
+It seems that we get good fit for all 5 imputations. Therefore, we will select one to complete our data set.
+
+```{r complete dataset train_temp}
+train_temp1<- complete(imp2,2)
+```
+
+We will continue with balancing the classes of our response variable but let us have a look at the table of relative frequencies for the stroke variable at the train_temp1 dataset. 
+
+```{r relative frequencies train_temp1 - variable stroke, echo=FALSE}
+prop_stroke_final <-prop.table(table(train_temp1$stroke))
+round(prop_stroke_final,3)
+
+```
+
+It is clear that the classes are highly imbalanced. We will again use the SMOTE (Synthetic Minority Oversampling Technique). Hence, we balance our dataset as follows:
+
+
+```{r balance data  train_temp1 with smote}
+
+smote_data1 <- smote(stroke~., 
+                    train_temp1, 
+                    k = 5,              
+                    perc.over = 19, 
+                    perc.under = 1.1)
+
+table(smote_data1$stroke)
+
+prop_stroke_smote_final <-prop.table(table(smote_data1$stroke))
+round(prop_stroke_smote_final,3)
+```
+
+Now, we are ready to use the random forest algorithm in order to check the performance of the model.
+
+We will find again the best value for the parameter mtry.
+
+
+```{r random Forest final - mtry, warning=FALSE}
+
+set.seed(321, sample.kind="Rounding")
+
+control <- trainControl(method="cv", number = 10)
+
+grid <- data.frame(mtry = c(1:8))
+
+model_rf_final <- train(stroke~.,smote_data1,method = "rf",
+                  trControl=control, tuneGrid = grid)
+
+model_rf_final$bestTune
+```
+
+Therefore, we get the best mtry parameter. We can now fit the random forest model with the best mtry parameter and with the optimized minimum node size.
+
+```{r random Forest final - fit model}
+fit_rf_final <- randomForest(stroke~., smote_data1, minNode = model_rf_final$bestTune$mtry)
+```
+
+We will continue with obtaining the prediction using the predict function.
+
+```{r random forest final - predict}
+predict_rf_final<- predict(fit_rf_final, validation_set)
+```
+
+
+We will now check the confusion matrix of our model.
+
+```{r random forest final - confusion matrix}
+
+confusionMatrix_rf_final <- confusionMatrix(predict_rf_final,validation_set$stroke, 
+                                            positive ="pos", mode="everything")
+confusionMatrix_rf_final
+
+```
+
+
+Therefore, the accuracy of our model using the decision tree algorithm is:
+
+```{r random forest final- Accuracy, echo=FALSE}
+rf_final<-confusionMatrix_rf_final$overall[["Accuracy"]]
+rf_final
+```
+
+Our model performance is quite good since we have maximized our accuracy, hence our predictions using this model can be more accurate and trustworthy.
+
+
+## Conclusion
+
+In this project, we have explored our [Stroke Prediction Dataset](https://www.kaggle.com/datasets/fedesoriano/stroke-prediction-dataset?datasetId=1120859&sortBy=dateRun&tab=bookmarked&select=healthcare-dataset-stroke-data.csv) from Kaggle website. We got useful insights from this exploration and based on this, we have used different modeling approaches for creating an algorithm that could predict the potentiality of having a stroke. We concluded that the best modeling approach and therefore, the potential best evaluation system that could successfully predict the possibility of having a stroke is the Random Forest algorithm.
+
+The scope of this work was to build an algorithm which will help us predict the possibility of having a stroke. This project gives us a hint of the relation of specific predictors with the stroke and can be the first step for a future better algorithm. Supervised machine learning was used in the construction of the algorithm, with data acquired from the Kaggle website. Restricted number of observations in our dataset limited the performance of our models. Future work that will be based in a larger dataset, will take into account supplementary factors/predictors that may increase the risk of a stroke and with the use of additional machine learning algorithms, could help us built a more efficient model with potential widespread use.
+
+
+
+## References
+
+[Stroke Prediction Dataset](https://www.kaggle.com/datasets/fedesoriano/stroke-prediction-dataset?datasetId=1120859&sortBy=dateRun&tab=bookmarked&select=healthcare-dataset-stroke-data.csv),
+
+[Introduction to Data Science, Rafael A. Irizarry](http://rafalab.dfci.harvard.edu/dsbook/),
+
+[mice: mice: Multivariate Imputation by Chained Equations](https://www.rdocumentation.org/packages/mice/versions/3.14.0/topics/mice),
+
+[Package ‘performanceEstimation’](https://cran.r-project.org/web/packages/performanceEstimation/performanceEstimation.pdf),
+
+[American Stroke Association](https://www.stroke.org/en/about-stroke),
+
+[National Health Service (NHS)](https://www.nhs.uk/conditions/stroke/)
